@@ -4,10 +4,13 @@ import os
 import sys
 import math
 import time
+import mmap
+import struct
 import bisect
 import signal
 import optparse
 import traceback
+from pprint import pprint
 
 try:
   import whisper
@@ -70,8 +73,6 @@ new_archives = [whisper.parseRetentionDef(retentionDef)
                 for retentionDef in args[1:]]
 
 old_archives = info['archives']
-# sort by precision, lowest to highest
-old_archives.sort(key=lambda a: a['secondsPerPoint'], reverse=True)
 
 if options.xFilesFactor is None:
   xff = info['xFilesFactor']
@@ -83,12 +84,18 @@ if options.aggregationMethod is None:
 else:
   aggregationMethod = options.aggregationMethod
 
+def mmap_file(filename):
+  fd = os.open(filename, os.O_RDONLY)
+  map = mmap.mmap(fd, os.fstat(fd).st_size, prot=mmap.PROT_READ)
+  os.close(fd)
+  return map
+
 print('Retrieving all data from the archives')
 for archive in old_archives:
-  fromTime = now - archive['retention'] + archive['secondsPerPoint']
-  untilTime = now
-  timeinfo,values = whisper.fetch(path, fromTime, untilTime)
-  archive['data'] = (timeinfo,values)
+  map = mmap_file(path)
+  offset = archive['offset']
+  psize = whisper.pointSize
+  archive['datapoints'] =  [ struct.unpack(whisper.pointFormat, map[offset+i*psize:offset+(i+1)*whisper.pointSize]) for i in xrange(archive['points']) ]
 
 if options.newfile is None:
   tmpfile = path + '.tmp'
@@ -110,8 +117,7 @@ if options.aggregate:
   all_datapoints = []
   for archive in old_archives:
     # Loading all datapoints into memory for fast querying
-    timeinfo, values = archive['data']
-    new_datapoints = zip( range(*timeinfo), values )
+    new_datapoints = archive['datapoints']
     if all_datapoints:
       last_timestamp = all_datapoints[-1][0]
       slice_end = 0
@@ -158,9 +164,8 @@ if options.aggregate:
 else:
   print('Migrating data without aggregation...')
   for archive in old_archives:
-    timeinfo, values = archive['data']
-    datapoints = zip( range(*timeinfo), values )
-    datapoints = filter(lambda p: p[1] is not None, datapoints)
+    datapoints = filter(lambda p: p[1] is not None, archive['datapoints'])
+    pprint(datapoints);
     whisper.update_many(newfile, datapoints)
 
 if options.newfile is not None:
@@ -182,3 +187,4 @@ except:
 if options.nobackup:
   print("Unlinking backup: %s" % backup)
   os.unlink(backup)
+

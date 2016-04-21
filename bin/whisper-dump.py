@@ -87,11 +87,11 @@ def dump_archives(archives):
   for i,archive in enumerate(archives):
     print('Archive %d data:' %i)
     offset = archive['offset']
-    for point in xrange(archive['points']):
-      (timestamp, value) = struct.unpack(whisper.pointFormat, map[offset:offset+whisper.pointSize])
-      print('%d: %d, %10.35g' % (point, timestamp, value))
-      offset += whisper.pointSize
-    print
+    psize = whisper.pointSize
+    datapoints = [ struct.unpack(whisper.pointFormat, map[offset+i*psize:offset+(i+1)*psize]) for i in xrange(archive['points']) ]
+    datapoints.sort(key=lambda a: a[0], reverse=True)
+    for (timestamp, value) in datapoints:
+      print('?: %d, %10.35g' % (timestamp, value))
 
 if not os.path.exists(path):
   raise SystemExit('[ERROR] File "%s" does not exist!' % path)

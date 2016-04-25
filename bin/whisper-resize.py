@@ -104,22 +104,33 @@ whisper.create(newfile, new_archives, xFilesFactor=xff, aggregationMethod=aggreg
 size = os.stat(newfile).st_size
 print('Created: %s (%d bytes)' % (newfile,size))
 
+def include(timestamp, archives):
+  for archive in archives:
+    (fromInterval, untilInterval, step) = archive['data'][0]
+    if fromInterval <= timestamp and timestamp < untilInterval:
+      return True
+  return False
+
 if options.aggregate:
   # This is where data will be interpolated (best effort)
   print('Migrating data with aggregation...')
   all_datapoints = []
-  for archive in old_archives:
+  old_archives_reverse = list(old_archives)
+  # sort by precision, higher to lowest
+  old_archives_reverse.sort(key=lambda a: a['secondsPerPoint'])
+  for i, archive in enumerate(old_archives_reverse):
     # Loading all datapoints into memory for fast querying
     timeinfo, values = archive['data']
     new_datapoints = zip( range(*timeinfo), values )
     if all_datapoints:
-      last_timestamp = all_datapoints[-1][0]
-      for i,(timestamp,value) in enumerate(new_datapoints):
-        if timestamp > last_timestamp:
-          break
-      all_datapoints += new_datapoints[i:]
+      for j,(timestamp,value) in enumerate(new_datapoints):
+        # TODO: Not efficient implementation
+        if not include(timestamp, old_archives_reverse[:i]):
+          all_datapoints += new_datapoints[j:j+1]
     else:
       all_datapoints += new_datapoints
+
+  all_datapoints.sort(key=lambda a: a[0])
 
   oldtimestamps = map( lambda p: p[0], all_datapoints)
   oldvalues = map( lambda p: p[1], all_datapoints)
@@ -130,6 +141,8 @@ if options.aggregate:
 
   new_info = whisper.info(newfile)
   new_archives = new_info['archives']
+  # sort by precision, lower to highest
+  new_archives.sort(key=lambda a: a['secondsPerPoint'], reverse=True)
 
   for archive in new_archives:
     step = archive['secondsPerPoint']
@@ -144,6 +157,8 @@ if options.aggregate:
       #       iteration. Obviously, this can only be done if
       #       timepoints_to_update is always updated. Is it?
       lefti = bisect.bisect_left(oldtimestamps, tinterval[0])
+      if oldtimestamps[lefti] != tinterval[0] and lefti > 0:
+          lefti = lefti - 1
       righti = bisect.bisect_left(oldtimestamps, tinterval[1], lo=lefti)
       newvalues = oldvalues[lefti:righti]
       if newvalues:

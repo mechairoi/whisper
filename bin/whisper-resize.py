@@ -133,8 +133,8 @@ if options.aggregate:
 
   for archive in new_archives:
     step = archive['secondsPerPoint']
-    fromTime = now - archive['retention'] + now % step
-    untilTime = now + now % step + step
+    fromTime = now - archive['retention'] - now % step
+    untilTime = now - now % step + step
     print("(%s,%s,%s)" % (fromTime,untilTime, step))
     timepoints_to_update = range(fromTime, untilTime, step)
     print("timepoints_to_update: %s" % timepoints_to_update)

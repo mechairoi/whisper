@@ -114,10 +114,8 @@ if options.aggregate:
     new_datapoints = zip( range(*timeinfo), values )
     if all_datapoints:
       last_timestamp = all_datapoints[-1][0]
-      slice_end = 0
       for i,(timestamp,value) in enumerate(new_datapoints):
         if timestamp > last_timestamp:
-          slice_end = i
           break
       all_datapoints += new_datapoints[i:]
     else:

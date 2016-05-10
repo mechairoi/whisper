@@ -157,8 +157,6 @@ if options.aggregate:
       #       iteration. Obviously, this can only be done if
       #       timepoints_to_update is always updated. Is it?
       lefti = bisect.bisect_left(oldtimestamps, tinterval[0])
-      if oldtimestamps[lefti] != tinterval[0] and lefti > 0:
-          lefti = lefti - 1
       righti = bisect.bisect_left(oldtimestamps, tinterval[1], lo=lefti)
       newvalues = oldvalues[lefti:righti]
       if newvalues:
@@ -167,6 +165,16 @@ if options.aggregate:
           newdatapoints.append([tinterval[0],
                                 whisper.aggregate(aggregationMethod,
                                                   non_none, newvalues)])
+      elif lefti > 0:
+        if oldvalues[lefti-1] is None:
+          newvalue = oldvalues[lefti]
+        elif oldvalues[lefti] is None:
+          newvalue = oldvalues[lefti-1]
+        else:
+          print("(%s,%s,%s,%s,%s)\n" % (oldtimestamps[lefti], tinterval[0], oldtimestamps[lefti-1], oldvalues[lefti], oldvalues[lefti-1]))
+          newvalue = ((oldtimestamps[lefti]-tinterval[0])*oldvalues[lefti-1]+(tinterval[0]-oldtimestamps[lefti-1])*oldvalues[lefti])/(oldtimestamps[lefti]-oldtimestamps[lefti-1])
+        if newvalue is not None:
+          newdatapoints.append([tinterval[0], newvalue])
     whisper.update_many(newfile, newdatapoints)
 else:
   print('Migrating data without aggregation...')

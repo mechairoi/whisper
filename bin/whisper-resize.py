@@ -54,14 +54,14 @@ option_parser.add_option(
 (options, args) = option_parser.parse_args()
 
 if len(args) < 2:
-  option_parser.print_usage()
+  option_parser.print_help()
   sys.exit(1)
 
 path = args[0]
 
 if not os.path.exists(path):
   sys.stderr.write("[ERROR] File '%s' does not exist!\n\n" % path)
-  option_parser.print_usage()
+  option_parser.print_help()
   sys.exit(1)
 
 info = whisper.info(path)
@@ -83,7 +83,7 @@ if options.aggregationMethod is None:
 else:
   aggregationMethod = options.aggregationMethod
 
-print 'Retrieving all data from the archives'
+print('Retrieving all data from the archives')
 for archive in old_archives:
   fromTime = now - archive['retention'] + archive['secondsPerPoint']
   untilTime = now
@@ -93,53 +93,64 @@ for archive in old_archives:
 if options.newfile is None:
   tmpfile = path + '.tmp'
   if os.path.exists(tmpfile):
-    print 'Removing previous temporary database file: %s' % tmpfile
+    print('Removing previous temporary database file: %s' % tmpfile)
     os.unlink(tmpfile)
   newfile = tmpfile
 else:
   newfile = options.newfile
 
-print 'Creating new whisper database: %s' % newfile
+print('Creating new whisper database: %s' % newfile)
 whisper.create(newfile, new_archives, xFilesFactor=xff, aggregationMethod=aggregationMethod)
 size = os.stat(newfile).st_size
-print 'Created: %s (%d bytes)' % (newfile,size)
+print('Created: %s (%d bytes)' % (newfile,size))
+
+def include(timestamp, archives):
+  for archive in archives:
+    (fromInterval, untilInterval, step) = archive['data'][0]
+    if fromInterval <= timestamp and timestamp < untilInterval:
+      return True
+  return False
 
 if options.aggregate:
   # This is where data will be interpolated (best effort)
-  print 'Migrating data with aggregation...'
+  print('Migrating data with aggregation...')
   all_datapoints = []
-  for archive in old_archives:
+  old_archives_reverse = list(old_archives)
+  # sort by precision, higher to lowest
+  old_archives_reverse.sort(key=lambda a: a['secondsPerPoint'])
+  for i, archive in enumerate(old_archives_reverse):
     # Loading all datapoints into memory for fast querying
     timeinfo, values = archive['data']
     new_datapoints = zip( range(*timeinfo), values )
     if all_datapoints:
-      last_timestamp = all_datapoints[-1][0]
-      slice_end = 0
-      for i,(timestamp,value) in enumerate(new_datapoints):
-        if timestamp > last_timestamp:
-          slice_end = i
-          break
-      all_datapoints += new_datapoints[i:]
+      for j,(timestamp,value) in enumerate(new_datapoints):
+        # TODO: Not efficient implementation
+        if not include(timestamp, old_archives_reverse[:i]):
+          all_datapoints += new_datapoints[j:j+1]
     else:
       all_datapoints += new_datapoints
+
+  all_datapoints.sort(key=lambda a: a[0])
 
   oldtimestamps = map( lambda p: p[0], all_datapoints)
   oldvalues = map( lambda p: p[1], all_datapoints)
 
-  print "oldtimestamps: %s" % oldtimestamps
+  print("oldtimestamps: %s" % oldtimestamps)
   # Simply cleaning up some used memory
   del all_datapoints
 
   new_info = whisper.info(newfile)
   new_archives = new_info['archives']
+  # sort by precision, lower to highest
+  new_archives.sort(key=lambda a: a['secondsPerPoint'], reverse=True)
 
   for archive in new_archives:
     step = archive['secondsPerPoint']
-    fromTime = now - archive['retention'] + now % step
-    untilTime = now + now % step + step
-    print "(%s,%s,%s)" % (fromTime,untilTime, step)
+    fromTime = now - archive['retention'] - now % step
+    untilTime = now - now % step + step
+    print("(%s,%s,%s)" % (fromTime,untilTime, step))
     timepoints_to_update = range(fromTime, untilTime, step)
-    print "timepoints_to_update: %s" % timepoints_to_update
+    print("timepoints_to_update: %s" % timepoints_to_update)
     newdatapoints = []
     for tinterval in zip( timepoints_to_update[:-1], timepoints_to_update[1:] ):
       # TODO: Setting lo= parameter for 'lefti' based on righti from previous
@@ -153,10 +164,20 @@ if options.aggregate:
         if 1.0*len(non_none)/len(newvalues) >= xff:
           newdatapoints.append([tinterval[0],
                                 whisper.aggregate(aggregationMethod,
-                                                  non_none)])
+                                                  non_none, newvalues)])
+      elif lefti > 0:
+        if oldvalues[lefti-1] is None:
+          newvalue = oldvalues[lefti]
+        elif oldvalues[lefti] is None:
+          newvalue = oldvalues[lefti-1]
+        else:
+          print("(%s,%s,%s,%s,%s)\n" % (oldtimestamps[lefti], tinterval[0], oldtimestamps[lefti-1], oldvalues[lefti], oldvalues[lefti-1]))
+          newvalue = ((oldtimestamps[lefti]-tinterval[0])*oldvalues[lefti-1]+(tinterval[0]-oldtimestamps[lefti-1])*oldvalues[lefti])/(oldtimestamps[lefti]-oldtimestamps[lefti-1])
+        if newvalue is not None:
+          newdatapoints.append([tinterval[0], newvalue])
     whisper.update_many(newfile, newdatapoints)
 else:
-  print 'Migrating data without aggregation...'
+  print('Migrating data without aggregation...')
   for archive in old_archives:
     timeinfo, values = archive['data']
     datapoints = zip( range(*timeinfo), values )
@@ -167,18 +188,18 @@ if options.newfile is not None:
   sys.exit(0)
 
 backup = path + '.bak'
-print 'Renaming old database to: %s' % backup
+print('Renaming old database to: %s' % backup)
 os.rename(path, backup)
 
 try:
-  print 'Renaming new database to: %s' % path
+  print('Renaming new database to: %s' % path)
   os.rename(tmpfile, path)
 except:
   traceback.print_exc()
-  print '\nOperation failed, restoring backup'
+  print('\nOperation failed, restoring backup')
   os.rename(backup, path)
   sys.exit(1)
 
 if options.nobackup:
-  print "Unlinking backup: %s" % backup
+  print("Unlinking backup: %s" % backup)
   os.unlink(backup)

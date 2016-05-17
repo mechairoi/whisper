@@ -164,7 +164,7 @@ if options.aggregate:
         if 1.0*len(non_none)/len(newvalues) >= xff:
           newdatapoints.append([tinterval[0],
                                 whisper.aggregate(aggregationMethod,
-                                                  non_none, newvalues)])
+                                                  non_none)])
       elif lefti > 0:
         if oldvalues[lefti-1] is None:
           newvalue = oldvalues[lefti]

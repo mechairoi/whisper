@@ -135,7 +135,7 @@ if options.aggregate:
   oldtimestamps = map( lambda p: p[0], all_datapoints)
   oldvalues = map( lambda p: p[1], all_datapoints)
 
-  print("oldtimestamps: %s" % oldtimestamps)
+  # print("oldtimestamps: %s" % oldtimestamps)
   # Simply cleaning up some used memory
   del all_datapoints
 
@@ -148,9 +148,9 @@ if options.aggregate:
     step = archive['secondsPerPoint']
     fromTime = now - archive['retention'] - now % step
     untilTime = now - now % step + step
-    print("(%s,%s,%s)" % (fromTime,untilTime, step))
+    # print("(%s,%s,%s)" % (fromTime,untilTime, step))
     timepoints_to_update = range(fromTime, untilTime, step)
-    print("timepoints_to_update: %s" % timepoints_to_update)
+    # print("timepoints_to_update: %s" % timepoints_to_update)
     newdatapoints = []
     for tinterval in zip( timepoints_to_update[:-1], timepoints_to_update[1:] ):
       # TODO: Setting lo= parameter for 'lefti' based on righti from previous
@@ -171,7 +171,7 @@ if options.aggregate:
         elif oldvalues[lefti] is None:
           newvalue = oldvalues[lefti-1]
         else:
-          print("(%s,%s,%s,%s,%s)\n" % (oldtimestamps[lefti], tinterval[0], oldtimestamps[lefti-1], oldvalues[lefti], oldvalues[lefti-1]))
+          # print("(%s,%s,%s,%s,%s)\n" % (oldtimestamps[lefti], tinterval[0], oldtimestamps[lefti-1], oldvalues[lefti], oldvalues[lefti-1]))
           newvalue = ((oldtimestamps[lefti]-tinterval[0])*oldvalues[lefti-1]+(tinterval[0]-oldtimestamps[lefti-1])*oldvalues[lefti])/(oldtimestamps[lefti]-oldtimestamps[lefti-1])
         if newvalue is not None:
           newdatapoints.append([tinterval[0], newvalue])
